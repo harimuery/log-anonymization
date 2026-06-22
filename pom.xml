@@ -42,6 +42,7 @@
         <logback.version>1.4.14</logback.version>
         <log4j2.version>2.21.1</log4j2.version>
         <nacos.version>2.3.2</nacos.version>
+        <ahocorasick.version>0.6.3</ahocorasick.version>
         <jasypt.version>3.0.5</jasypt.version>
         <micrometer.version>1.12.5</micrometer.version>
     </properties>
@@ -117,8 +118,13 @@
             </dependency>
             <dependency>
                 <groupId>com.alibaba.nacos</groupId>
-                <artifactId>nacos-spring-context</artifactId>
+                <artifactId>nacos-client</artifactId>
                 <version>${nacos.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.ahocorasick</groupId>
+                <artifactId>ahocorasick</artifactId>
+                <version>${ahocorasick.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.github.ulisesbocchio</groupId>

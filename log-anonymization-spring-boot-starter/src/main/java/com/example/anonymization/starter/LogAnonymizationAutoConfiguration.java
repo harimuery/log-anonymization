@@ -24,6 +24,7 @@ import com.example.anonymization.core.domain.service.impl.DefaultSensitiveDataMa
 import com.example.anonymization.core.infrastructure.audit.DisruptorAuditAdapter;
 import com.example.anonymization.core.infrastructure.cache.CaffeineCacheAdapter;
 import com.example.anonymization.core.infrastructure.config.LocalFileRuleLoadAdapter;
+import com.example.anonymization.core.infrastructure.config.NacosRuleLoadAdapter;
 import com.example.anonymization.core.infrastructure.event.DefaultDomainEventBus;
 import com.example.anonymization.core.infrastructure.exception.ExceptionSanitizer;
 import com.example.anonymization.core.infrastructure.filter.SensitiveDataBloomFilter;
@@ -147,14 +148,26 @@ public class LogAnonymizationAutoConfiguration {
     /**
      * 装配规则加载端口。
      *
-     * <p>当前默认从本地 YAML 加载，生产环境可由业务方提供 Nacos/Apollo 加载实现覆盖。
+     * <p>根据 {@code log-anonymization.rule-source} 配置选择加载方式：
+     * <ul>
+     *   <li>{@code LOCAL_FILE}（默认）：从本地 YAML 文件加载，支持 WatchService 文件变更监听；</li>
+     *   <li>{@code NACOS}：从 Nacos 配置中心加载，支持 Nacos Listener 动态刷新。</li>
+     * </ul>
      *
-     * @param properties 全局配置（含 {@code ruleFilePath}）
+     * @param properties 全局配置
      * @return 规则加载端口实现
      */
     @Bean
     @ConditionalOnMissingBean
     public RuleLoadPort ruleLoadPort(LogAnonymizationProperties properties) {
+        if ("NACOS".equalsIgnoreCase(properties.getRuleSource())) {
+            LogAnonymizationProperties.NacosConfig nacos = properties.getNacos();
+            return new NacosRuleLoadAdapter(
+                nacos.getServerAddr(),
+                nacos.getDataId(),
+                nacos.getGroup()
+            );
+        }
         return new LocalFileRuleLoadAdapter(properties.getRuleFilePath());
     }
 
