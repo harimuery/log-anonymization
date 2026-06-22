@@ -29,11 +29,13 @@ import com.example.anonymization.core.infrastructure.config.NacosRuleLoadAdapter
 import com.example.anonymization.core.infrastructure.event.DefaultDomainEventBus;
 import com.example.anonymization.core.infrastructure.exception.ExceptionSanitizer;
 import com.example.anonymization.core.infrastructure.filter.SensitiveDataBloomFilter;
+import com.example.anonymization.core.infrastructure.filter.WhitelistFilter;
 import com.example.anonymization.core.infrastructure.largemsg.LargeMessageHandler;
 import com.example.anonymization.core.infrastructure.masker.*;
 import com.example.anonymization.core.infrastructure.metrics.MicrometerMetricsAdapter;
 import com.example.anonymization.core.infrastructure.resilience.ResilientMaskingEngine;
 import com.example.anonymization.core.infrastructure.sampling.SamplingController;
+import com.example.anonymization.core.infrastructure.spi.SpiExtensionLoader;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -143,6 +145,7 @@ public class LogAnonymizationAutoConfiguration {
         return new DisruptorAuditAdapter(
             auditExporters,
             properties.getAudit().getBatchSize(),
+            properties.getAudit().getRingBufferSize(),
             properties.getAudit().getFlushIntervalSeconds()
         );
     }
@@ -181,7 +184,9 @@ public class LogAnonymizationAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public DetectorRegistry detectorRegistry() {
-        return new DetectorRegistry(detectors);
+        List<SensitiveDataDetector> all = new ArrayList<>(SpiExtensionLoader.loadDetectors());
+        all.addAll(detectors);
+        return new DetectorRegistry(all);
     }
 
     /**
@@ -197,7 +202,8 @@ public class LogAnonymizationAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public MaskerRegistry maskerRegistry(LogAnonymizationProperties properties) {
-        List<SensitiveDataMasker> allMaskers = new ArrayList<>(maskers);
+        List<SensitiveDataMasker> allMaskers = new ArrayList<>(SpiExtensionLoader.loadMaskers());
+        allMaskers.addAll(maskers);
         if (allMaskers.isEmpty()) {
             allMaskers.add(new PartialMaskMasker());
             allMaskers.add(new FullMaskMasker());
@@ -293,6 +299,20 @@ public class LogAnonymizationAutoConfiguration {
     @Bean
     public CaffeineCacheAdapter caffeineCacheAdapter() {
         return new CaffeineCacheAdapter();
+    }
+
+    /**
+     * 装配白名单过滤器。
+     *
+     * <p>使用 {@link WhitelistFilter} 默认白名单模式（UUID/时间戳/流水号/版本号），
+     * 在检测阶段过滤掉常见的非敏感数据匹配，降低误杀率。
+     *
+     * @return 白名单过滤器
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public WhitelistFilter whitelistFilter() {
+        return new WhitelistFilter();
     }
 
     /**

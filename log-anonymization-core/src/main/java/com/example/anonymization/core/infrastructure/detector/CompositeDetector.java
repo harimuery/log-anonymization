@@ -3,6 +3,7 @@ package com.example.anonymization.core.infrastructure.detector;
 import com.example.anonymization.api.model.DetectionResult;
 import com.example.anonymization.api.model.LogContext;
 import com.example.anonymization.api.spi.SensitiveDataDetector;
+import com.example.anonymization.core.infrastructure.filter.WhitelistFilter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,21 +36,28 @@ import java.util.List;
  */
 public class CompositeDetector implements SensitiveDataDetector {
 
-    /**
-     * 子检测器列表（不可变快照）。
-     * 通过 {@link List#copyOf} 防御性拷贝，禁止外部继续追加；
-     * 调用方应保证子检测器本身是无状态的或自身线程安全的。
-     */
     private final List<SensitiveDataDetector> detectors;
 
+    private final WhitelistFilter whitelistFilter;
+
     /**
-     * 构造组合检测器。
+     * 构造组合检测器（使用默认白名单过滤器）。
      *
-     * @param detectors 子检测器列表，不可为 {@code null}，允许为空列表（空列表场景下
-     *                  {@link #detect(LogContext)} 直接返回空结果）。
+     * @param detectors 子检测器列表，不可为 {@code null}，允许为空列表
      */
     public CompositeDetector(List<SensitiveDataDetector> detectors) {
+        this(detectors, new WhitelistFilter());
+    }
+
+    /**
+     * 构造组合检测器（指定白名单过滤器）。
+     *
+     * @param detectors       子检测器列表
+     * @param whitelistFilter 白名单过滤器（过滤 UUID/时间戳等非敏感匹配）
+     */
+    public CompositeDetector(List<SensitiveDataDetector> detectors, WhitelistFilter whitelistFilter) {
         this.detectors = List.copyOf(detectors);
+        this.whitelistFilter = whitelistFilter;
     }
 
     /**
@@ -67,7 +75,8 @@ public class CompositeDetector implements SensitiveDataDetector {
         for (SensitiveDataDetector detector : detectors) {
             allResults.addAll(detector.detect(context));
         }
-        return ResultAggregator.aggregate(allResults);
+        List<DetectionResult> aggregated = ResultAggregator.aggregate(allResults);
+        return whitelistFilter.filter(aggregated);
     }
 
     /**
