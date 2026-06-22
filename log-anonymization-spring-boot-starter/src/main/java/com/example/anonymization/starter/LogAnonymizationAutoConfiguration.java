@@ -10,6 +10,7 @@ import com.example.anonymization.api.spi.AuditExporter;
 import com.example.anonymization.api.spi.SensitiveDataDetector;
 import com.example.anonymization.api.spi.SensitiveDataMasker;
 import com.example.anonymization.core.application.MaskingApplicationService;
+import com.example.anonymization.core.application.SecureLogger;
 import com.example.anonymization.core.application.pipeline.*;
 import com.example.anonymization.core.domain.DetectorRegistry;
 import com.example.anonymization.core.domain.MaskerRegistry;
@@ -36,8 +37,11 @@ import com.example.anonymization.core.infrastructure.sampling.SamplingController
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.jasypt.encryption.StringEncryptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -95,6 +99,29 @@ public class LogAnonymizationAutoConfiguration {
      */
     @Autowired(required = false)
     private List<AuditExporter> auditExporters = new ArrayList<>();
+
+    /**
+     * 装配 Jasypt 配置加密器 —— 为 {@code ENC(...)} 格式的敏感配置值提供解密能力。
+     *
+     * <p>当 classpath 下存在 {@code jasypt-spring-boot-starter} 时自动装配，
+     * 使用 {@code PBEWithHMACSHA512AndAES_256} 算法 + 随机 IV/Salt。
+     *
+     * <p>主密钥来源优先级：
+     * <ol>
+     *   <li>环境变量 {@code JASYPT_ENCRYPTOR_PASSWORD}</li>
+     *   <li>系统属性 {@code jasypt.encryptor.password}</li>
+     * </ol>
+     *
+     * @param password 主密钥，从环境变量/系统属性获取
+     * @return 配置好的 {@link StringEncryptor} 实例
+     */
+    @Bean("jasyptStringEncryptor")
+    @ConditionalOnClass(name = "org.jasypt.encryption.StringEncryptor")
+    @ConditionalOnMissingBean(name = "jasyptStringEncryptor")
+    public StringEncryptor jasyptStringEncryptor(
+            @Value("${jasypt.encryptor.password:}") String password) {
+        return JasyptConfig.createEncryptor(password);
+    }
 
     /**
      * 装配领域事件总线默认实现。
@@ -474,9 +501,28 @@ public class LogAnonymizationAutoConfiguration {
                                     CircuitBreaker circuitBreaker,
                                     FallbackMasker fallbackMasker) {
         MaskingPort delegate = new MaskingApplicationService(pipeline, metricsPort);
-        if (properties.getCircuitBreaker().isEnabled()) {
-            return new ResilientMaskingEngine(delegate, circuitBreaker, fallbackMasker);
+        MaskingPort result = properties.getCircuitBreaker().isEnabled()
+            ? new ResilientMaskingEngine(delegate, circuitBreaker, fallbackMasker)
+            : delegate;
+        SecureLogger.init(result);
+        return result;
+    }
+
+    /**
+     * 容器关闭时销毁 SecureLogger 全局单例，防止内存泄露。
+     */
+    @Bean
+    public SecureLoggerDestroyer secureLoggerDestroyer() {
+        return new SecureLoggerDestroyer();
+    }
+
+    /**
+     * SecureLogger 生命周期管理 Bean —— 在 Spring 容器关闭时清理全局单例。
+     */
+    static class SecureLoggerDestroyer implements AutoCloseable {
+        @Override
+        public void close() {
+            SecureLogger.destroy();
         }
-        return delegate;
     }
 }

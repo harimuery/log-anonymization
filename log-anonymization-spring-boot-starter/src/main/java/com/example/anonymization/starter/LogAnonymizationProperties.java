@@ -552,23 +552,47 @@ public class LogAnonymizationProperties {
         /**
          * 全局哈希盐值（用于 {@code HashMasker}）。
          * <p><b>警告</b>：默认值为占位符，生产环境务必替换为从 KMS / 环境变量注入的安全随机串。
+         * <p>支持 Jasypt 加密格式：{@code ENC(密文字符串)}，配合 {@link JasyptConfig} 使用。
          */
         private String salt = "default-salt-change-me-in-production";
 
         /**
+         * 是否启用 Jasypt 配置加密。
+         *
+         * <p>启用后，{@link #salt} 等敏感字段支持 {@code ENC(...)} 格式，
+         * 由 {@link JasyptConfig} 提供的 {@code StringEncryptor} 自动解密。
+         *
+         * <p>前提条件：classpath 下需存在 {@code jasypt-spring-boot-starter} 依赖。
+         */
+        private boolean jasyptEnabled = false;
+
+        /**
          * 获取全局哈希盐值。
          *
-         * @return 盐值字符串
+         * @return 盐值字符串（可能为 {@code ENC(...)} 格式，由 Jasypt 自动解密）
          */
         public String getSalt() { return salt; }
         /**
          * 设置全局哈希盐值。
          *
          * <p><b>警告</b>：生产环境务必从 KMS / 环境变量注入安全随机串。
+         * 推荐使用 {@code ENC(...)} 格式存储密文，通过环境变量 {@code JASYPT_ENCRYPTOR_PASSWORD} 注入主密钥。
          *
-         * @param salt 盐值字符串
+         * @param salt 盐值字符串（明文或 {@code ENC(...)} 格式）
          */
         public void setSalt(String salt) { this.salt = salt; }
+        /**
+         * 是否启用 Jasypt 配置加密。
+         *
+         * @return {@code true} 启用
+         */
+        public boolean isJasyptEnabled() { return jasyptEnabled; }
+        /**
+         * 设置是否启用 Jasypt 配置加密。
+         *
+         * @param jasyptEnabled 开关
+         */
+        public void setJasyptEnabled(boolean jasyptEnabled) { this.jasyptEnabled = jasyptEnabled; }
     }
 
     /**
