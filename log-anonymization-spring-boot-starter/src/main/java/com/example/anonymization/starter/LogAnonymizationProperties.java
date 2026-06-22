@@ -83,6 +83,14 @@ public class LogAnonymizationProperties {
      * 规则校验配置。
      */
     private ValidationConfig validation = new ValidationConfig();
+    /**
+     * Flyway 数据库迁移配置。
+     */
+    private FlywayConfig flyway = new FlywayConfig();
+    /**
+     * 灰度发布配置。
+     */
+    private GrayReleaseConfig grayRelease = new GrayReleaseConfig();
 
     /**
      * 获取总开关状态。
@@ -196,6 +204,32 @@ public class LogAnonymizationProperties {
      * 设置规则校验配置。
      */
     public void setValidation(ValidationConfig validation) { this.validation = validation; }
+
+    /**
+     * 获取 Flyway 数据库迁移配置。
+     *
+     * @return Flyway 配置
+     */
+    public FlywayConfig getFlyway() { return flyway; }
+    /**
+     * 设置 Flyway 数据库迁移配置。
+     *
+     * @param flyway Flyway 配置
+     */
+    public void setFlyway(FlywayConfig flyway) { this.flyway = flyway; }
+
+    /**
+     * 获取灰度发布配置。
+     *
+     * @return 灰度发布配置
+     */
+    public GrayReleaseConfig getGrayRelease() { return grayRelease; }
+    /**
+     * 设置灰度发布配置。
+     *
+     * @param grayRelease 灰度发布配置
+     */
+    public void setGrayRelease(GrayReleaseConfig grayRelease) { this.grayRelease = grayRelease; }
 
     /**
      * Nacos 配置中心连接参数。业务系统推荐使用 Nacos 作为规则中心，
@@ -695,5 +729,137 @@ public class LogAnonymizationProperties {
          * @param failFast 开关
          */
         public void setFailFast(boolean failFast) { this.failFast = failFast; }
+    }
+
+    /**
+     * Flyway 数据库迁移配置。
+     *
+     * <p>启用条件：classpath 存在 {@code flyway-core} 依赖 + {@code enabled=true}。
+     * 迁移脚本由 {@code log-anonymization-core} 模块提供（{@code db/migration/V*__*.sql}）。
+     */
+    public static class FlywayConfig {
+        /**
+         * 是否启用 Flyway 自动迁移。默认 {@code false}（仅在使用数据库存储规则/审计时开启）。
+         */
+        private boolean enabled = false;
+        /**
+         * 迁移脚本位置。默认 {@code classpath:db/migration}。
+         */
+        private String locations = "classpath:db/migration";
+        /**
+         * 是否在已有数据库上基线迁移（跳过已有表）。默认 {@code true}。
+         */
+        private boolean baselineOnMigrate = true;
+        /**
+         * Flyway 历史表名（避免与其他 Flyway 用户冲突）。默认 {@code flyway_schema_history_anonymization}。
+         */
+        private String table = "flyway_schema_history_anonymization";
+
+        /**
+         * 是否启用 Flyway 自动迁移。
+         *
+         * @return {@code true} 启用
+         */
+        public boolean isEnabled() { return enabled; }
+        /**
+         * 设置是否启用 Flyway 自动迁移。
+         *
+         * @param enabled 开关
+         */
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        /**
+         * 获取迁移脚本位置。
+         *
+         * @return 位置字符串
+         */
+        public String getLocations() { return locations; }
+        /**
+         * 设置迁移脚本位置。
+         *
+         * @param locations 位置字符串
+         */
+        public void setLocations(String locations) { this.locations = locations; }
+        /**
+         * 是否在已有数据库上基线迁移。
+         *
+         * @return {@code true} 启用基线
+         */
+        public boolean isBaselineOnMigrate() { return baselineOnMigrate; }
+        /**
+         * 设置是否在已有数据库上基线迁移。
+         *
+         * @param baselineOnMigrate 开关
+         */
+        public void setBaselineOnMigrate(boolean baselineOnMigrate) { this.baselineOnMigrate = baselineOnMigrate; }
+        /**
+         * 获取 Flyway 历史表名。
+         *
+         * @return 表名
+         */
+        public String getTable() { return table; }
+        /**
+         * 设置 Flyway 历史表名。
+         *
+         * @param table 表名
+         */
+        public void setTable(String table) { this.table = table; }
+    }
+
+    /**
+     * 灰度发布配置。
+     *
+     * <p>用于 SDK 升级时新旧版本共存的灰度路由控制。
+     * 基于请求 traceId 哈希的确定性路由，保证相同请求始终路由到同一版本。
+     */
+    public static class GrayReleaseConfig {
+        /**
+         * 灰度比例（0-100）。0=全部走旧版本，100=全部走新版本。默认 0。
+         */
+        private int percent = 0;
+        /**
+         * 旧版本号。默认为当前 SDK 版本。
+         */
+        private String oldVersion = "1.0.0";
+        /**
+         * 新版本号。默认为当前 SDK 版本。
+         */
+        private String newVersion = "1.0.0";
+
+        /**
+         * 获取灰度比例。
+         *
+         * @return 灰度比例（0-100）
+         */
+        public int getPercent() { return percent; }
+        /**
+         * 设置灰度比例。
+         *
+         * @param percent 灰度比例（0-100）
+         */
+        public void setPercent(int percent) { this.percent = percent; }
+        /**
+         * 获取旧版本号。
+         *
+         * @return 旧版本号字符串
+         */
+        public String getOldVersion() { return oldVersion; }
+        /**
+         * 设置旧版本号。
+         *
+         * @param oldVersion 旧版本号字符串
+         */
+        public void setOldVersion(String oldVersion) { this.oldVersion = oldVersion; }
+        /**
+         * 获取新版本号。
+         *
+         * @return 新版本号字符串
+         */
+        public String getNewVersion() { return newVersion; }
+        /**
+         * 设置新版本号。
+         *
+         * @param newVersion 新版本号字符串
+         */
+        public void setNewVersion(String newVersion) { this.newVersion = newVersion; }
     }
 }

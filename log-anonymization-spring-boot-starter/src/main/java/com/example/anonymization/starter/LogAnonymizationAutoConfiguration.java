@@ -24,8 +24,11 @@ import com.example.anonymization.core.domain.service.impl.DefaultSensitiveDataDe
 import com.example.anonymization.core.domain.service.impl.DefaultSensitiveDataMaskingService;
 import com.example.anonymization.core.infrastructure.audit.DisruptorAuditAdapter;
 import com.example.anonymization.core.infrastructure.cache.CaffeineCacheAdapter;
+import com.example.anonymization.core.infrastructure.config.CircuitBreakerConfigBean;
 import com.example.anonymization.core.infrastructure.config.LocalFileRuleLoadAdapter;
+import com.example.anonymization.core.infrastructure.config.MaskingCacheConfig;
 import com.example.anonymization.core.infrastructure.config.NacosRuleLoadAdapter;
+import com.example.anonymization.core.infrastructure.config.ThreadPoolConfig;
 import com.example.anonymization.core.infrastructure.event.DefaultDomainEventBus;
 import com.example.anonymization.core.infrastructure.exception.ExceptionSanitizer;
 import com.example.anonymization.core.infrastructure.filter.SensitiveDataBloomFilter;
@@ -37,7 +40,6 @@ import com.example.anonymization.core.infrastructure.resilience.ResilientMasking
 import com.example.anonymization.core.infrastructure.sampling.SamplingController;
 import com.example.anonymization.core.infrastructure.spi.SpiExtensionLoader;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -46,8 +48,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -77,6 +79,7 @@ import java.util.List;
 @AutoConfiguration
 @EnableConfigurationProperties(LogAnonymizationProperties.class)
 @ConditionalOnProperty(prefix = "log-anonymization", name = "enabled", havingValue = "true", matchIfMissing = true)
+@Import({ThreadPoolConfig.class, MaskingCacheConfig.class, CircuitBreakerConfigBean.class})
 public class LogAnonymizationAutoConfiguration {
 
     /**
@@ -289,19 +292,6 @@ public class LogAnonymizationAutoConfiguration {
     }
 
     /**
-     * 装配 Caffeine 本地缓存适配器。
-     *
-     * <p>提供两个缓存：规则缓存（1000 条）与编译后 Pattern 缓存（500 条），
-     * 减少重复正则编译开销。
-     *
-     * @return 缓存适配器
-     */
-    @Bean
-    public CaffeineCacheAdapter caffeineCacheAdapter() {
-        return new CaffeineCacheAdapter();
-    }
-
-    /**
      * 装配白名单过滤器。
      *
      * <p>使用 {@link WhitelistFilter} 默认白名单模式（UUID/时间戳/流水号/版本号），
@@ -328,25 +318,64 @@ public class LogAnonymizationAutoConfiguration {
         return new FallbackMasker();
     }
 
+    // 熔断器 Bean 由 CircuitBreakerConfigBean 提供（通过 @Import 引入）
+    // Caffeine 缓存 Bean 由 MaskingCacheConfig 提供（通过 @Import 引入）
+
     /**
-     * 装配 Resilience4j 熔断器。
+     * 装配版本兼容策略。
      *
-     * <p>默认阈值：失败率 50%、慢调用 10ms、滑动窗口 100、Open 状态持续 30s。
+     * <p>默认使用 SemVer 兼容规则：相同 MAJOR 版本 = 兼容。
+     * 业务方可通过提供自定义 {@link com.example.anonymization.api.version.VersionCompatPolicy} Bean 覆盖。
      *
-     * @param properties 全局配置
-     * @return 熔断器实例（名称固定为 {@code maskingEngine}）
+     * @return 版本兼容策略
      */
     @Bean
     @ConditionalOnMissingBean
-    public CircuitBreaker maskingCircuitBreaker(LogAnonymizationProperties properties) {
-        LogAnonymizationProperties.CircuitBreakerConfig cbConfig = properties.getCircuitBreaker();
-        CircuitBreakerConfig config = CircuitBreakerConfig.custom()
-            .failureRateThreshold((float) cbConfig.getFailureRateThreshold())
-            .slowCallDurationThreshold(Duration.ofMillis(10))
-            .slidingWindowSize(cbConfig.getSlidingWindowSize())
-            .waitDurationInOpenState(Duration.ofSeconds(30))
-            .build();
-        return CircuitBreaker.of("maskingEngine", config);
+    public com.example.anonymization.api.version.VersionCompatPolicy versionCompatPolicy() {
+        return new com.example.anonymization.core.infrastructure.version.DefaultVersionCompatPolicy();
+    }
+
+    /**
+     * 装配规则版本兼容处理器。
+     *
+     * <p>在规则加载阶段检查规则文件版本与当前 SDK 的兼容性，
+     * 不兼容时拒绝加载，已废弃时记录警告。
+     *
+     * @param policy 版本兼容策略
+     * @return 规则版本兼容处理器
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public com.example.anonymization.core.infrastructure.version.RuleVersionCompatHandler ruleVersionCompatHandler(
+            com.example.anonymization.api.version.VersionCompatPolicy policy) {
+        return new com.example.anonymization.core.infrastructure.version.RuleVersionCompatHandler(
+            policy, com.example.anonymization.api.version.Version.current());
+    }
+
+    /**
+     * 装配灰度发布路由器。
+     *
+     * <p>基于 traceId 哈希的确定性灰度路由，用于 SDK 升级时新旧版本共存。
+     * 默认灰度比例 0%（全部走旧版本），通过 {@code log-anonymization.gray-release.percent} 配置。
+     *
+     * @param policy 版本兼容策略
+     * @param properties 全局配置
+     * @return 灰度发布路由器
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public com.example.anonymization.core.infrastructure.version.GrayReleaseRouter grayReleaseRouter(
+            com.example.anonymization.api.version.VersionCompatPolicy policy,
+            LogAnonymizationProperties properties) {
+        com.example.anonymization.api.version.Version oldVersion =
+            com.example.anonymization.api.version.Version.parse(properties.getGrayRelease().getOldVersion());
+        com.example.anonymization.api.version.Version newVersion =
+            com.example.anonymization.api.version.Version.parse(properties.getGrayRelease().getNewVersion());
+        com.example.anonymization.core.infrastructure.version.GrayReleaseRouter router =
+            new com.example.anonymization.core.infrastructure.version.GrayReleaseRouter(
+                policy, oldVersion, newVersion);
+        router.setGrayPercent(properties.getGrayRelease().getPercent());
+        return router;
     }
 
     /**
@@ -562,6 +591,56 @@ public class LogAnonymizationAutoConfiguration {
         @Override
         public void close() {
             SecureLogger.destroy();
+        }
+    }
+
+    /**
+     * Flyway 数据库迁移自动装配（独立内部配置类）。
+     *
+     * <p>将 Flyway 相关 Bean 隔离在独立的 {@code @Configuration} 内部类中，
+     * 通过 {@code @ConditionalOnClass} 确保：当 classpath 不存在 {@code flyway-core} 时，
+     * Spring Boot 仅跳过此内部类，不影响外层 {@link LogAnonymizationAutoConfiguration} 的加载。
+     *
+     * <p>启用条件（全部满足才激活）：
+     * <ol>
+     *   <li>classpath 存在 {@code org.flywaydb.core.Flyway}</li>
+     *   <li>{@code log-anonymization.flyway.enabled=true}（默认 {@code false}）</li>
+     *   <li>配置了 {@code spring.datasource.url}</li>
+     * </ol>
+     *
+     * <p>迁移脚本位置：{@code classpath:db/migration/V*__*.sql}
+     * （由 {@code log-anonymization-core} 模块提供，位于 {@code src/main/resources/db/migration/}）
+     *
+     * @author java-architect
+     * @since 1.0.0
+     */
+    @org.springframework.context.annotation.Configuration
+    @ConditionalOnClass(name = "org.flywaydb.core.Flyway")
+    @ConditionalOnProperty(prefix = "log-anonymization.flyway", name = "enabled", havingValue = "true")
+    static class FlywayMigrationConfiguration {
+
+        /**
+         * 装配 Flyway —— 在应用启动时自动执行数据库迁移脚本。
+         *
+         * <p>迁移脚本版本：
+         * <ul>
+         *   <li>{@code V1__init_schema.sql}：创建 3 张核心表（masking_rule / masking_rule_scope / audit_log）</li>
+         *   <li>{@code V2__seed_default_rules.sql}：插入 7 条默认规则 + 全局作用域</li>
+         *   <li>{@code V3__audit_partition_event.sql}：创建审计日志按月自动分区 Event</li>
+         * </ul>
+         *
+         * @param dataSource Spring 自动注入的数据源
+         * @return Flyway 实例（构造时自动执行迁移）
+         */
+        @Bean
+        @ConditionalOnMissingBean(name = "logAnonymizationFlyway")
+        public org.flywaydb.core.Flyway logAnonymizationFlyway(javax.sql.DataSource dataSource) {
+            return org.flywaydb.core.Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .baselineOnMigrate(true)
+                .table("flyway_schema_history_anonymization")
+                .load();
         }
     }
 }

@@ -7,6 +7,10 @@ import com.example.anonymization.api.model.DetectorConfig;
 import com.example.anonymization.api.model.MaskerConfig;
 import com.example.anonymization.api.model.MaskingRule;
 import com.example.anonymization.api.model.MaskingScope;
+import com.example.anonymization.api.version.Version;
+import com.example.anonymization.api.version.VersionCompatPolicy;
+import com.example.anonymization.core.infrastructure.version.DefaultVersionCompatPolicy;
+import com.example.anonymization.core.infrastructure.version.RuleVersionCompatHandler;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 import org.yaml.snakeyaml.LoaderOptions;
@@ -43,9 +47,24 @@ import java.util.Map;
 public class YamlRuleParser {
 
     private final Yaml yaml;
+    private final RuleVersionCompatHandler versionHandler;
 
     public YamlRuleParser() {
         this.yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
+        VersionCompatPolicy policy = new DefaultVersionCompatPolicy();
+        this.versionHandler = new RuleVersionCompatHandler(policy, Version.current());
+    }
+
+    /**
+     * 使用自定义版本兼容策略构造解析器。
+     *
+     * @param compatPolicy 版本兼容策略
+     */
+    public YamlRuleParser(VersionCompatPolicy compatPolicy) {
+        this.yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
+        this.versionHandler = new RuleVersionCompatHandler(
+            compatPolicy != null ? compatPolicy : new DefaultVersionCompatPolicy(),
+            Version.current());
     }
 
     /**
@@ -72,6 +91,7 @@ public class YamlRuleParser {
         }
 
         int version = parseVersion(anonymization);
+        Version ruleVersion = new Version(version, 0, 0);
         List<MaskingRule> rules = new ArrayList<>();
         for (int i = 0; i < defaultRules.size(); i++) {
             try {
@@ -84,7 +104,7 @@ public class YamlRuleParser {
                     "解析第 " + (i + 1) + " 条规则失败: " + e.getMessage(), e);
             }
         }
-        return rules;
+        return versionHandler.handle(rules, ruleVersion);
     }
 
     private int parseVersion(Map<String, Object> anonymization) {

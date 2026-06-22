@@ -35,6 +35,9 @@ public class CaffeineCacheAdapter {
 
     /**
      * 构造 Caffeine 缓存适配器（按既定策略初始化两个缓存实例）。
+     *
+     * <p>使用默认缓存参数：规则缓存 1000 条/5 分钟过期，Pattern 缓存 500 条/30 分钟过期。
+     * 推荐使用 {@link #CaffeineCacheAdapter(Cache, Cache)} 注入外部配置的缓存实例。
      */
     public CaffeineCacheAdapter() {
         this.ruleCache = Caffeine.newBuilder()
@@ -48,6 +51,23 @@ public class CaffeineCacheAdapter {
             .expireAfterAccess(Duration.ofMinutes(30))
             .build();
 
+        this.ruleCachePort = new RuleCachePort(ruleCache);
+        this.patternCachePort = new PatternCachePort(patternCache);
+    }
+
+    /**
+     * 构造 Caffeine 缓存适配器（注入外部配置的缓存实例）。
+     *
+     * <p>使用场景：配合 {@link com.example.anonymization.core.infrastructure.config.MaskingCacheConfig}
+     * 注入由 Spring 管理的、可动态配置参数的缓存 Bean。
+     *
+     * @param ruleCache    规则缓存实例（不可为 null）
+     * @param patternCache Pattern 缓存实例（不可为 null）
+     */
+    public CaffeineCacheAdapter(Cache<String, List<MaskingRule>> ruleCache,
+                                 Cache<String, com.google.re2j.Pattern> patternCache) {
+        this.ruleCache = java.util.Objects.requireNonNull(ruleCache, "ruleCache must not be null");
+        this.patternCache = java.util.Objects.requireNonNull(patternCache, "patternCache must not be null");
         this.ruleCachePort = new RuleCachePort(ruleCache);
         this.patternCachePort = new PatternCachePort(patternCache);
     }
