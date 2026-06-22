@@ -1,0 +1,112 @@
+groups:
+  - name: log-anonymization-alerts
+    rules:
+      - alert: MaskingHighErrorRate
+        expr: |
+          rate(masking_errors_total[5m]) / rate(masking_processed_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Log anonymization error rate exceeds 5%"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes on instance {{ $labels.instance }}."
+
+      - alert: MaskingHighLatency
+        expr: |
+          histogram_quantile(0.99, rate(masking_latency_seconds_bucket[5m])) > 0.01
+        for: 3m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Masking P99 latency exceeds 10ms"
+          description: "P99 latency is {{ $value }}s on instance {{ $labels.instance }}."
+
+      - alert: MaskingCircuitBreakerOpen
+        expr: |
+          resilience4j_circuitbreaker_state{name="maskingEngine",state="open"} == 1
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Masking engine circuit breaker is OPEN"
+          description: "Circuit breaker for masking engine on {{ $labels.instance }} has been open for more than 1 minute. Fallback masking is active."
+
+      - alert: MaskingLowHitRate
+        expr: |
+          rate(masking_hits_total[10m]) / rate(masking_processed_total[10m]) < 0.01
+        for: 15m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "Masking hit rate below 1%"
+          description: "Hit rate is {{ $value | humanizePercentage }}. Consider reviewing bloom filter configuration or rule definitions."
+
+      - alert: MaskingHighDegradedRate
+        expr: |
+          rate(masking_degraded_total[5m]) / rate(masking_processed_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Masking degraded rate exceeds 1%"
+          description: "Degraded rate is {{ $value | humanizePercentage }}. Check downstream service health and circuit breaker status."
+
+      - alert: DisruptorQueueBacklog
+        expr: |
+          masking_audit_disruptor_queue_size > 10000
+        for: 3m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Audit Disruptor queue backlog exceeds 10000"
+          description: "Queue size is {{ $value }} on {{ $labels.instance }}. Audit consumers may be slow or unavailable."
+
+      - alert: RuleReloadFailure
+        expr: |
+          increase(masking_rule_reload_errors_total[10m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Rule reload failed"
+          description: "{{ $value }} rule reload errors in the last 10 minutes on {{ $labels.instance }}. Check Nacos/config server connectivity."
+
+      - alert: CacheHitRateLow
+        expr: |
+          rate(masking_cache_hits_total[5m]) / (rate(masking_cache_hits_total[5m]) + rate(masking_cache_misses_total[5m])) < 0.5
+        for: 10m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "Cache hit rate below 50%"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}. Consider increasing cache size or TTL."
+
+      - alert: BloomFilterFalsePositiveRateHigh
+        expr: |
+          rate(masking_bloom_filter_false_positives_total[10m]) / rate(masking_bloom_filter_queries_total[10m]) > 0.05
+        for: 15m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "Bloom filter false positive rate exceeds 5%"
+          description: "False positive rate is {{ $value | humanizePercentage }}. Consider rebuilding with larger capacity."
+
+      - alert: JVMHeapUsageHigh
+        expr: |
+          jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "JVM heap usage exceeds 85%"
+          description: "Heap usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}."

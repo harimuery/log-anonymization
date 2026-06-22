@@ -39,7 +39,6 @@ public class CaffeineCacheAdapter {
     public CaffeineCacheAdapter() {
         this.ruleCache = Caffeine.newBuilder()
             .maximumSize(1000)
-            .refreshAfterWrite(Duration.ofSeconds(30))
             .expireAfterWrite(Duration.ofMinutes(5))
             .recordStats()
             .build();

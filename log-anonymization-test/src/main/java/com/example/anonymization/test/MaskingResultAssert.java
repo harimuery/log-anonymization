@@ -122,4 +122,22 @@ public class MaskingResultAssert extends AbstractAssert<MaskingResultAssert, Mas
         }
         return this;
     }
+
+    /**
+     * 断言脱敏值不包含指定子串（反向模糊匹配）。
+     *
+     * <p>适用于校验"敏感数据已被完全脱敏"的场景，例如
+     * 校验 {@code !result.getMasked().contains("6222021234567890")}。
+     *
+     * @param unexpectedSubstring 不期望包含的子串
+     * @return 当前断言器
+     * @throws AssertionError 当实际值包含子串时抛出
+     */
+    public MaskingResultAssert doesNotContainMaskedValue(String unexpectedSubstring) {
+        isNotNull();
+        if (actual.getMasked().contains(unexpectedSubstring)) {
+            failWithMessage("Expected masked value NOT to contain <%s> but it did: <%s>", unexpectedSubstring, actual.getMasked());
+        }
+        return this;
+    }
 }
