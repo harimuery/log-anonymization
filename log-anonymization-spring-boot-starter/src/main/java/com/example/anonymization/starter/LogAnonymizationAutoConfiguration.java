@@ -37,9 +37,7 @@ import com.example.anonymization.core.infrastructure.sampling.SamplingController
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.micrometer.core.instrument.MeterRegistry;
-import org.jasypt.encryption.StringEncryptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -99,29 +97,6 @@ public class LogAnonymizationAutoConfiguration {
      */
     @Autowired(required = false)
     private List<AuditExporter> auditExporters = new ArrayList<>();
-
-    /**
-     * 装配 Jasypt 配置加密器 —— 为 {@code ENC(...)} 格式的敏感配置值提供解密能力。
-     *
-     * <p>当 classpath 下存在 {@code jasypt-spring-boot-starter} 时自动装配，
-     * 使用 {@code PBEWithHMACSHA512AndAES_256} 算法 + 随机 IV/Salt。
-     *
-     * <p>主密钥来源优先级：
-     * <ol>
-     *   <li>环境变量 {@code JASYPT_ENCRYPTOR_PASSWORD}</li>
-     *   <li>系统属性 {@code jasypt.encryptor.password}</li>
-     * </ol>
-     *
-     * @param password 主密钥，从环境变量/系统属性获取
-     * @return 配置好的 {@link StringEncryptor} 实例
-     */
-    @Bean("jasyptStringEncryptor")
-    @ConditionalOnClass(name = "org.jasypt.encryption.StringEncryptor")
-    @ConditionalOnMissingBean(name = "jasyptStringEncryptor")
-    public StringEncryptor jasyptStringEncryptor(
-            @Value("${jasypt.encryptor.password:}") String password) {
-        return JasyptConfig.createEncryptor(password);
-    }
 
     /**
      * 装配领域事件总线默认实现。
@@ -204,6 +179,7 @@ public class LogAnonymizationAutoConfiguration {
      * @return 检测器注册表（含全部注入的 SPI 实现）
      */
     @Bean
+    @ConditionalOnMissingBean
     public DetectorRegistry detectorRegistry() {
         return new DetectorRegistry(detectors);
     }
@@ -219,6 +195,7 @@ public class LogAnonymizationAutoConfiguration {
      * @return 打码器工厂（用于根据 {@code MaskerType} 查找打码器）
      */
     @Bean
+    @ConditionalOnMissingBean
     public MaskerRegistry maskerRegistry(LogAnonymizationProperties properties) {
         List<SensitiveDataMasker> allMaskers = new ArrayList<>(maskers);
         if (allMaskers.isEmpty()) {
@@ -242,6 +219,7 @@ public class LogAnonymizationAutoConfiguration {
      * @return 打码器工厂
      */
     @Bean
+    @ConditionalOnMissingBean
     public MaskerFactory maskerFactory(MaskerRegistry maskerRegistry) {
         return new MaskerFactory(maskerRegistry.getAllMaskers());
     }
@@ -514,6 +492,47 @@ public class LogAnonymizationAutoConfiguration {
     @Bean
     public SecureLoggerDestroyer secureLoggerDestroyer() {
         return new SecureLoggerDestroyer();
+    }
+
+    /**
+     * Jasypt 加密器自动装配（独立内部配置类）。
+     *
+     * <p>将 Jasypt 相关 Bean 隔离在独立的 {@code @Configuration} 内部类中，
+     * 通过 {@code @ConditionalOnClass} 确保：当 classpath 不存在 {@code jasypt-spring-boot-starter} 时，
+     * Spring Boot 仅跳过此内部类，不影响外层 {@link LogAnonymizationAutoConfiguration} 的加载。
+     *
+     * <p>设计依据：Spring Boot 的 {@code @ConditionalOnClass} 在方法级别使用时，
+     * 如果方法签名引用了可选依赖中的类型，当该类型不在 classpath 时，
+     * JVM 加载包含该方法的类就会抛出 {@code NoClassDefFoundError}。
+     * 将 Bean 方法隔离到独立内部类可以避免这一问题。
+     *
+     * @author java-architect
+     * @since 1.0.0
+     */
+    @org.springframework.context.annotation.Configuration
+    @ConditionalOnClass(name = "org.jasypt.encryption.StringEncryptor")
+    static class JasyptEncryptorConfiguration {
+
+        /**
+         * 装配 Jasypt 配置加密器 —— 为 {@code ENC(...)} 格式的敏感配置值提供解密能力。
+         *
+         * <p>使用 {@code PBEWithHMACSHA512AndAES_256} 算法 + 随机 IV/Salt。
+         * 主密钥来源优先级：
+         * <ol>
+         *   <li>环境变量 {@code JASYPT_ENCRYPTOR_PASSWORD}</li>
+         *   <li>系统属性 {@code jasypt.encryptor.password}</li>
+         *   <li>配置文件中的 {@code jasypt.encryptor.password}（不推荐）</li>
+         * </ol>
+         *
+         * @param password 主密钥，从环境变量/系统属性获取
+         * @return 配置好的 StringEncryptor 实例
+         */
+        @Bean("jasyptStringEncryptor")
+        @ConditionalOnMissingBean(name = "jasyptStringEncryptor")
+        public org.jasypt.encryption.StringEncryptor jasyptStringEncryptor(
+                @org.springframework.beans.factory.annotation.Value("${jasypt.encryptor.password:}") String password) {
+            return JasyptConfig.createEncryptor(password);
+        }
     }
 
     /**
