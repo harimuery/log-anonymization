@@ -1,0 +1,110 @@
+rules:
+  - ruleId: "BANK_CARD_001"
+    name: "银行卡号脱敏"
+    dataType: "BANK_CARD"
+    detectorType: "REGEX"
+    maskerType: "PARTIAL_MASK"
+    priority: 100
+    enabled: true
+    version: 1
+    detectorConfig:
+      patterns:
+        - "\\b(\\d{16,19})\\b"
+      enableLuhnCheck: true
+    maskerConfig:
+      keepPrefixLen: 4
+      keepSuffixLen: 4
+      maskChar: "*"
+      dataType: "BANK_CARD"
+
+  - ruleId: "ID_CARD_001"
+    name: "身份证号脱敏"
+    dataType: "ID_CARD"
+    detectorType: "REGEX"
+    maskerType: "PARTIAL_MASK"
+    priority: 90
+    enabled: true
+    version: 1
+    detectorConfig:
+      patterns:
+        - "\\b(\\d{17}[0-9Xx])\\b"
+      enableChecksum: true
+    maskerConfig:
+      keepPrefixLen: 3
+      keepSuffixLen: 4
+      maskChar: "*"
+      dataType: "ID_CARD"
+
+  - ruleId: "PHONE_001"
+    name: "手机号脱敏"
+    dataType: "PHONE"
+    detectorType: "REGEX"
+    maskerType: "PARTIAL_MASK"
+    priority: 80
+    enabled: true
+    version: 1
+    detectorConfig:
+      patterns:
+        - "\\b(1[3-9]\\d{9})\\b"
+    maskerConfig:
+      keepPrefixLen: 3
+      keepSuffixLen: 4
+      maskChar: "*"
+      dataType: "PHONE"
+
+  - ruleId: "EMAIL_001"
+    name: "邮箱脱敏"
+    dataType: "EMAIL"
+    detectorType: "REGEX"
+    maskerType: "PARTIAL_MASK"
+    priority: 70
+    enabled: true
+    version: 1
+    detectorConfig:
+      patterns:
+        - "\\b([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})\\b"
+    maskerConfig:
+      keepPrefixLen: 2
+      keepSuffixLen: 0
+      maskChar: "*"
+      maskDomain: true
+      dataType: "EMAIL"
+
+  - ruleId: "CVV_001"
+    name: "CVV完全脱敏"
+    dataType: "CVV"
+    detectorType: "KEYWORD"
+    maskerType: "DISCARD"
+    priority: 100
+    enabled: true
+    version: 1
+    detectorConfig:
+      keywords:
+        - "cvv"
+        - "CVV"
+        - "security_code"
+      fieldNames:
+        - "cvv"
+        - "securityCode"
+    maskerConfig:
+      dataType: "CVV"
+
+  - ruleId: "PASSWORD_001"
+    name: "密码完全脱敏"
+    dataType: "PASSWORD"
+    detectorType: "KEYWORD"
+    maskerType: "FULL_MASK"
+    priority: 100
+    enabled: true
+    version: 1
+    detectorConfig:
+      keywords:
+        - "password"
+        - "passwd"
+        - "pwd"
+      fieldNames:
+        - "password"
+        - "passwd"
+    maskerConfig:
+      maskChar: "*"
+      dataType: "PASSWORD"
