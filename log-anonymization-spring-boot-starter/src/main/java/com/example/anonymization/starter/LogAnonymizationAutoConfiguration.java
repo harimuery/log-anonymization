@@ -199,8 +199,7 @@ public class LogAnonymizationAutoConfiguration {
      * 覆盖绝大多数支付场景需求。
      *
      * @param properties 全局配置（读取 {@code secret.salt}）
-     * @param maskerRegistry 打码器注册表 Bean（由 Spring 保证初始化顺序）
-     * @return 打码器工厂（用于根据 {@code MaskerType} 查找打码器）
+     * @return 打码器注册表（用于根据 {@code MaskerType} 查找打码器）
      */
     @Bean
     @ConditionalOnMissingBean
@@ -242,6 +241,7 @@ public class LogAnonymizationAutoConfiguration {
      * @return 布隆过滤器实例
      */
     @Bean
+    @ConditionalOnMissingBean
     public SensitiveDataBloomFilter sensitiveDataBloomFilter() {
         return new SensitiveDataBloomFilter();
     }
@@ -262,6 +262,7 @@ public class LogAnonymizationAutoConfiguration {
      * @return 线程安全规则管理器
      */
     @Bean
+    @ConditionalOnMissingBean
     public ThreadSafeRuleManager threadSafeRuleManager(RuleLoadPort ruleLoadPort,
                                                         RuleValidator ruleValidator) {
         ThreadSafeRuleManager manager = new ThreadSafeRuleManager();
@@ -284,6 +285,7 @@ public class LogAnonymizationAutoConfiguration {
      * @return 规则校验器
      */
     @Bean
+    @ConditionalOnMissingBean
     public RuleValidator ruleValidator(DetectorRegistry detectorRegistry,
                                         MaskerRegistry maskerRegistry,
                                         LogAnonymizationProperties properties) {
@@ -634,7 +636,8 @@ public class LogAnonymizationAutoConfiguration {
          */
         @Bean
         @ConditionalOnMissingBean(name = "logAnonymizationFlyway")
-        public org.flywaydb.core.Flyway logAnonymizationFlyway(javax.sql.DataSource dataSource) {
+        public org.flywaydb.core.Flyway logAnonymizationFlyway(
+                javax.sql.DataSource dataSource) {
             return org.flywaydb.core.Flyway.configure()
                 .dataSource(dataSource)
                 .locations("classpath:db/migration")

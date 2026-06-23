@@ -24,8 +24,8 @@ import java.lang.annotation.Target;
  *
  * <p>与 {@code log-anonymization.enabled=true} 配置属性的关系：
  * <ul>
- *   <li>本注解相当于"强制启用"，即便配置关闭也会装配 Bean；</li>
- *   <li>配置属性 {@code log-anonymization.enabled=false} 则会跳过所有 Bean 注册（即便使用本注解）。</li>
+ *   <li>本注解通过 {@link Import} 显式引入配置类，但实际 Bean 注册仍受 {@code @ConditionalOnProperty} 控制；</li>
+ *   <li>若 {@code log-anonymization.enabled=false}，即使使用本注解，所有 Bean 也不会注册。</li>
  * </ul>
  *
  * @author java-architect
